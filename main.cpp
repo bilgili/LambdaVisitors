@@ -4,11 +4,13 @@
 
 using namespace std;
 
-struct Obj1
+/** Possible child objects */
+struct ChildObj1
 {};
-struct Obj2
+struct ChildObj2
 {};
 
+/* A base group object that can host child objects, possible children known in compile time */
 template<typename... Visitables>
 struct VisitableGroup
 {
@@ -21,13 +23,15 @@ struct VisitableGroup
   MapType _chidMap;
 };
 
-struct Group : VisitableGroup<VisitableGroup<Obj1, Obj2>, Obj1, Obj2>
+/* A group object that can host child objects, possible children known in compile time */
+struct Group : VisitableGroup<VisitableGroup<ChildObj1, ChildObj2>, ChildObj1, ChildObj2>
 {
-  using VisitableGroup<VisitableGroup<Obj1, Obj2>, Obj1, Obj2>::VisitableChildren;
-  using VisitableGroup<VisitableGroup<Obj1, Obj2>, Obj1, Obj2>::getChildMap;
-  using VisitableGroup<VisitableGroup<Obj1, Obj2>, Obj1, Obj2>::MapType;
+  using VisitableGroup<VisitableGroup<ChildObj1, ChildObj2>, ChildObj1, ChildObj2>::VisitableChildren;
+  using VisitableGroup<VisitableGroup<ChildObj1, ChildObj2>, ChildObj1, ChildObj2>::getChildMap;
+  using VisitableGroup<VisitableGroup<ChildObj1, ChildObj2>, ChildObj1, ChildObj2>::MapType;
 };
 
+/* SFINAE class for requesting a group class to have a const getChildMap function */
 template<typename T>
 struct HasGetChildren
 {
@@ -47,11 +51,10 @@ public:
   static constexpr bool value = std::is_same<decltype(test<T>(0)),yes>::value;
 };
 
-static_assert (HasGetChildren<const Group&>::value, "");
-
 template<typename VisitFunc>
 struct FunctorTypeTraits;
 
+/* Based on the functor it can be decided to execute lambdas differently */
 template<typename Ret, typename T, typename... Params>
 struct FunctorTypeTraits<Ret (T::*)(Params...)>
 {
@@ -80,6 +83,7 @@ struct VisitFunc;
 template<typename... VisitableFuncs>
 struct Visitors;
 
+/* A lambda inherited visitors class */
 template<typename VisitableFunc, typename... VisitableFuncs>
 struct Visitors<VisitableFunc, VisitableFuncs...> : VisitFunc<VisitableFunc>,
                                                     Visitors<VisitableFuncs...>
@@ -97,7 +101,6 @@ struct Visitors<VisitableFunc> : VisitFunc<VisitableFunc>
   Visitors(VisitableFunc func) : VisitFunc<VisitableFunc>(std::move(func)) {}
 };
 
-
 template<typename... Funcs>
 auto makeVisitors(Funcs &&... funcs) {
   return Visitors<Funcs...>(std::forward<Funcs>(funcs)...);
@@ -109,6 +112,7 @@ void visit(Visitable &visitable, Funcs &&... funcs) {
   visitors(visitable);
 }
 
+/* A custom lambda based on original lambda, with extra children traversal possibility */
 template<typename VisitableFunc>
 struct VisitFunc<VisitableFunc, true> : VisitableFunc
 {
@@ -116,7 +120,11 @@ struct VisitFunc<VisitableFunc, true> : VisitableFunc
 
   template<size_t... Size, typename Type>
   void visitChildren(std::index_sequence<Size...>, Type &&param) const {
-    auto visitor = [](auto &map) { std::cout << typeid (decltype (map)).name() << std::endl; };
+    const auto visitor = [](auto &map)
+    {
+      // Visit your children
+      std::cout << typeid (decltype (map)).name() << std::endl;
+    };
     const int32_t visits[] = {(visitor(std::get<Size>(param.getChildMap())), 0)...};
     (void) visits;
   }
@@ -131,6 +139,7 @@ struct VisitFunc<VisitableFunc, true> : VisitableFunc
   }
 };
 
+/* A custom lambda based on original lambda, for nodes whic dont have traversal */
 template<typename VisitableFunc>
 struct VisitFunc<VisitableFunc, false> : VisitableFunc
 {
@@ -146,6 +155,10 @@ struct VisitFunc<VisitableFunc, false> : VisitableFunc
 int main()
 {
   Group group;
-  visit(group, [](const Group&) {}, [&](const Obj1&) {}, [&](const Obj2&) {});
+  /*
+   * Visit group recursively. All possible lambdas here but better (and right) approach would be the ones
+   * provided by the group class.
+   */
+  visit(group, [](const Group&) {}, [&](const ChildObj1&) {}, [&](const ChildObj2&) {});
   return 0;
 }
